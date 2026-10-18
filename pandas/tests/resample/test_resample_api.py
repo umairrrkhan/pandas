@@ -983,6 +983,43 @@ def test_end_and_end_day_origin(
     tm.assert_series_equal(res, expected)
 
 
+@pytest.mark.parametrize("origin", ["end", "end_day"])
+@pytest.mark.parametrize("closed", ["left", "right"])
+@pytest.mark.parametrize("offset", [None, "1min", "-1min"])
+@pytest.mark.parametrize("tz", [None, "UTC", "Europe/Paris"])
+@pytest.mark.parametrize("freq", ["1h", "168h"])
+def test_end_origin_matches_explicit_timestamp(origin, closed, offset, tz, freq):
+    # GH#44957: moving the first observation to an aligned boundary can
+    # exclude it from the generated bins, especially with an offset.
+    index = date_range("2021-04-22 00:01:00", periods=7, freq="24h", tz=tz)
+    series = pd.Series(range(1, len(index) + 1), index=index)
+    timestamp = index[-1] if origin == "end" else index[-1].ceil("D")
+
+    result = series.resample(
+        freq, origin=origin, closed=closed, label="right", offset=offset
+    ).sum()
+    expected = series.resample(
+        freq, origin=timestamp, closed=closed, label="right", offset=offset
+    ).sum()
+
+    tm.assert_series_equal(result, expected)
+
+
+def test_end_day_origin_single_observation_with_offset():
+    # GH#44957
+    index = pd.DatetimeIndex(["1969-06-01 00:01:00"])
+    series = pd.Series([1], index=index)
+
+    result = series.resample(
+        "1h", origin="end_day", closed="right", label="left", offset="1min"
+    ).sum()
+    expected = pd.Series(
+        [1], index=date_range("1969-05-31 23:01:00", periods=1, freq="1h")
+    )
+
+    tm.assert_series_equal(result, expected)
+
+
 @pytest.mark.parametrize(
     # expected_data is a string when op raises a ValueError
     "method, numeric_only, expected_data",
